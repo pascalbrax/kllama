@@ -106,3 +106,9 @@ The local RSS sampler now follows Ollama descendants instead of relying on legac
 ### Automatic model context setting
 
 Added an opt-in persistent setting to use the current model’s reported context maximum, including maxima above the manual control’s 262,144-token range. Unknown metadata falls back to the saved manual limit; disabling automatic selection restores that limit. Added regression coverage for API request values, metadata changes, unknown maxima, and persistence. Build and all five CTest targets pass, including automatic-context request and persistence checks. Socket fixture tests ran with local networking permitted.
+
+### CPU/GPU model placement bars
+
+Added five-second asynchronous `/api/ps` polling for local and remote endpoints, with a 5-second transfer timeout, 1 MiB response cap, manual redirects, no overlapping requests, and cancellation on endpoint changes. Sidebar bars use theme colors, gradients, numeric percentages, and reduced-motion-aware transitions; multiple models scroll within a bounded area. The model-placement tooltip distinguishes memory offload from processor activity.
+
+Fixture tests cover the 19%/81% split, CPU-only/GPU-only placement, empty lists, missing/invalid metrics, malformed responses, unsupported endpoints, and stale replies after switching local/remote endpoints. The sidebar was rendered and visually inspected at `build/placement-sidebar.png`; no QML warnings in the interface check. All five CTest targets pass. Remote mode is verified using an isolated HTTP fixture; no external remote host was available for a live check.

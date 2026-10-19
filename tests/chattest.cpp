@@ -227,6 +227,7 @@ private slots:
     void markdownAndAttachmentInterface() {
         QTest::failOnWarning(QRegularExpression(".*(ToolBarLayout|ActionToolBar\\.qml).*"));
         Fixture server;server.modelDetails.insert("fixture:latest",QJsonObject{{"capabilities",QJsonArray{"completion","vision"}},{"model_info",QJsonObject{{"general.architecture","fixture"},{"fixture.context_length",32768}}}});
+        server.runningModels={QJsonObject{{"name","mistral:latest"},{"size",8700000000LL},{"size_vram",7047000000LL}}};
         QVERIFY(server.listen(QHostAddress::LocalHost));OllamaConnection connection;QVERIFY(connection.configure(server.endpoint(),true).isEmpty());QTRY_COMPARE(connection.state(),QString("ready"));
         QTemporaryDir data,files;ChatSession chat(&connection,data.path());MarkdownRenderer markdown;
         QQmlApplicationEngine engine;KLocalization::setupLocalizedContext(&engine);
@@ -234,6 +235,7 @@ private slots:
         engine.rootContext()->setContextProperty("appInfo",QVariantMap{{"version","M3 test"},{"qtVersion",qVersion()},{"frameworksVersion","test"},{"dataDirectory",data.path()}});
         QSignalSpy warnings(&engine,&QQmlEngine::warnings);engine.load(QUrl::fromLocalFile(QStringLiteral(KLLAMA_SOURCE_DIR)+"/src/qml/Main.qml"));QVERIFY(!engine.rootObjects().isEmpty());
         auto *window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());QVERIFY(QTest::qWaitForWindowExposed(window));
+        QTRY_COMPARE(connection.runningModels().size(),1);
         const auto path=files.filePath("notes.md");{QFile file(path);QVERIFY(file.open(QIODevice::WriteOnly));file.write("# Project notes\nThe test value is 731.\n");}
         auto *editor=window->findChild<QQuickItem*>("draftEditor");QVERIFY(editor);
         auto *attachments=qobject_cast<AttachmentManager*>(chat.attachments());

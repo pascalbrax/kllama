@@ -17,6 +17,9 @@ public:
     QList<Response> inspections;
     int inspectionCount=0;
     QList<Response> responses;
+    QJsonArray runningModels;
+    QList<Response> runtimeResponses;
+    int runtimeCount=0;
     QList<QJsonObject> requests;
     Fixture() {
         connect(this,&QTcpServer::newConnection,this,[this]{
@@ -34,7 +37,11 @@ public:
                     if (data->size()<headerEnd+4+length) return;
                     socket->setProperty("handled",true);
                     Response response;
-                    if (!post) {
+                    if (data->startsWith("GET /api/ps ")) {
+                        ++runtimeCount;
+                        if (!runtimeResponses.isEmpty()) response=runtimeResponses.takeFirst();
+                        else response.parts={QJsonDocument(QJsonObject{{"models",runningModels}}).toJson(QJsonDocument::Compact)};
+                    } else if (!post) {
                         QJsonArray models;for(const auto &name:modelNames)models.append(QJsonObject{{"name",name},{"digest",digest}});
                         response.parts={QJsonDocument(QJsonObject{{"models",models}}).toJson(QJsonDocument::Compact)};
                     } else if(data->startsWith("POST /api/show ")) {

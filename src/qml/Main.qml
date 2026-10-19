@@ -89,6 +89,33 @@ Kirigami.ApplicationWindow {
         }
     }
 
+    component UsageBar: ColumnLayout {
+        required property string label
+        required property real fraction
+        required property color tint
+        spacing: 3
+        RowLayout {
+            Layout.fillWidth: true
+            Controls.Label { textFormat: Text.PlainText; text: label; font: Kirigami.Theme.smallFont; Layout.fillWidth: true }
+            Controls.Label { textFormat: Text.PlainText; text: Math.round(fraction * 100) + "%"; font: Kirigami.Theme.smallFont }
+        }
+        Rectangle {
+            Layout.fillWidth: true; implicitHeight: 7; radius: 3.5
+            color: Qt.alpha(tint, 0.14)
+            Rectangle {
+                height: parent.height; radius: parent.radius
+                width: parent.width * fraction
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0; color: Qt.alpha(tint, 0.65) }
+                    GradientStop { position: 1; color: tint }
+                }
+                Behavior on width { enabled: ollama.animations; NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+            }
+        }
+        Accessible.role: Accessible.ProgressBar
+        Accessible.name: label + " " + Math.round(fraction * 100) + "%"
+    }
     component HistoryPane: ColumnLayout {
         spacing: Kirigami.Units.largeSpacing
         RowLayout {
@@ -127,7 +154,49 @@ Kirigami.ApplicationWindow {
         Kirigami.Separator { Layout.fillWidth: true }
         Controls.Label { textFormat: Text.PlainText; text: ollama.local ? i18n("Local Ollama") : i18n("Remote Ollama") }
         Controls.Label { textFormat: Text.PlainText; text: ollama.endpoint; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
-        Controls.Label { textFormat: Text.PlainText; text: ollama.statistics; Layout.fillWidth: true; wrapMode: Text.NoWrap; elide: Text.ElideRight; fontSizeMode: Text.HorizontalFit; minimumPixelSize: 10; opacity: 0.75; Controls.ToolTip.visible: statisticsHover.hovered; Controls.ToolTip.text: text; HoverHandler { id: statisticsHover } }
+        Controls.Label { textFormat: Text.PlainText; text: ollama.statistics; font: Kirigami.Theme.smallFont; Layout.fillWidth: true; wrapMode: Text.NoWrap; elide: Text.ElideRight; fontSizeMode: Text.HorizontalFit; minimumPixelSize: 10; opacity: 0.75; Controls.ToolTip.visible: statisticsHover.hovered; Controls.ToolTip.text: text; HoverHandler { id: statisticsHover } }
+        Controls.Label {
+            textFormat: Text.PlainText; text: i18n("Model placement")
+            font: Kirigami.Theme.smallFont
+            Controls.ToolTip.visible: placementHover.hovered
+            Controls.ToolTip.text: i18n("Model memory split between CPU and GPU, as reported by Ollama. These are not processor activity percentages. Updates every five seconds, locally or remotely.")
+            HoverHandler { id: placementHover }
+        }
+        Controls.Label {
+            visible: ollama.runtimeStatus.length > 0
+            textFormat: Text.PlainText; text: ollama.runtimeStatus
+            font: Kirigami.Theme.smallFont; opacity: 0.75
+            Layout.fillWidth: true; elide: Text.ElideRight
+        }
+        Controls.ScrollView {
+            id: runtimeScroll
+            visible: ollama.runningModels.length > 0
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(runtimeList.implicitHeight, 190)
+            contentWidth: availableWidth
+            rightPadding: Kirigami.Units.largeSpacing
+            ColumnLayout {
+                id: runtimeList
+                width: runtimeScroll.availableWidth
+                spacing: Kirigami.Units.largeSpacing
+                Repeater {
+                    model: ollama.runningModels
+                    delegate: ColumnLayout {
+                        required property var modelData
+                        Layout.fillWidth: true; spacing: Kirigami.Units.smallSpacing
+                        Controls.Label {
+                            textFormat: Text.PlainText; text: modelData.name
+                            font: Kirigami.Theme.smallFont; Layout.fillWidth: true; elide: Text.ElideRight
+                            Controls.ToolTip.visible: modelHover.hovered
+                            Controls.ToolTip.text: text
+                            HoverHandler { id: modelHover }
+                        }
+                        UsageBar { label: i18n("CPU"); fraction: modelData.cpu; tint: Kirigami.Theme.linkColor; Layout.fillWidth: true }
+                        UsageBar { label: i18n("GPU"); fraction: modelData.gpu; tint: Kirigami.Theme.positiveTextColor; Layout.fillWidth: true }
+                    }
+                }
+            }
+        }
         Controls.Button { text: i18n("Connection settings"); icon.name: "configure"; enabled: !chat.busy && !chat.attachments.busy; Layout.fillWidth: true; onClicked: window.openSettings() }
         Controls.Button { text: i18n("About Kllama"); icon.name: "help-about"; Layout.fillWidth: true; onClicked: window.openAbout() }
     }
@@ -466,7 +535,7 @@ Kirigami.ApplicationWindow {
                         Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; opacity: 0.75
                         text: window.feedbackText.length ? "✓ " + window.feedbackText : (ollama.local ? i18n("Local Ollama") : i18n("Content is sent to %1", ollama.endpoint)) + " · " + (chat.enterSends ? i18n("Shift+Enter for a new line") : i18n("Shift+Enter to send"))
                     }
-                    Controls.Label { textFormat: Text.PlainText; visible: window.compact; text: ollama.statistics; Layout.fillWidth: true; wrapMode: Text.NoWrap; elide: Text.ElideRight; fontSizeMode: Text.HorizontalFit; minimumPixelSize: 10; opacity: 0.75; Controls.ToolTip.visible: compactStatisticsHover.hovered; Controls.ToolTip.text: text; HoverHandler { id: compactStatisticsHover } }
+                    Controls.Label { textFormat: Text.PlainText; visible: window.compact; text: ollama.statistics; font: Kirigami.Theme.smallFont; Layout.fillWidth: true; wrapMode: Text.NoWrap; elide: Text.ElideRight; fontSizeMode: Text.HorizontalFit; minimumPixelSize: 10; opacity: 0.75; Controls.ToolTip.visible: compactStatisticsHover.hovered; Controls.ToolTip.text: text; HoverHandler { id: compactStatisticsHover } }
                 }
             }
         }

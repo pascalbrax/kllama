@@ -66,6 +66,12 @@ private slots:
             auto *socket = server.nextPendingConnection();
             connect(socket, &QTcpSocket::readyRead, socket, [socket, body] {
                 const auto request = socket->readAll();
+                if (request.startsWith("GET /api/ps HTTP/1.1")) {
+                    const QByteArray empty="{\"models\":[]}";
+                    socket->write("HTTP/1.1 200 OK\r\nContent-Length: " + QByteArray::number(empty.size()) + "\r\nConnection: close\r\n\r\n" + empty);
+                    socket->disconnectFromHost();
+                    return;
+                }
                 QVERIFY(request.startsWith("GET /api/tags HTTP/1.1"));
                 socket->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + QByteArray::number(body.size()) + "\r\nConnection: close\r\n\r\n" + body);
                 socket->disconnectFromHost();

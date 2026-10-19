@@ -40,11 +40,20 @@ OllamaConnection::OllamaConnection(QObject *parent) : QObject(parent) {
     connect(&m_memoryTimer, &QTimer::timeout, this, &OllamaConnection::sampleMemory);
     m_memoryTimer.start();
     sampleMemory();
+    m_runtimeTimer.setInterval(5000);
+    connect(&m_runtimeTimer, &QTimer::timeout, this, &OllamaConnection::refreshRuntime);
+    m_runtimeTimer.start();
 }
 
 void OllamaConnection::setStatus(const QString &state, const QString &message) {
     m_state = state;
     m_message = message;
+    if (state != "ready" && state != "empty") {
+        invalidateRuntime();
+        m_runningModels.clear();
+        m_runtimeStatus.clear();
+        emit runtimeChanged();
+    }
     emit statusChanged();
 }
 
@@ -167,6 +176,7 @@ void OllamaConnection::refresh() {
             ? i18n("Connected, but no models are installed. Install one with ollama pull <model>, then refresh.")
             : i18np("Connected · %1 model available", "Connected · %1 models available", m_models.size()));
         emit statisticsChanged();
+        refreshRuntime();
         reply->deleteLater();
     });
     m_timeout.start();
@@ -192,3 +202,74 @@ void OllamaConnection::sampleMemory() {
 }
 
 void OllamaConnection::recordTraffic(qint64 sent, qint64 received) { m_sent += sent; m_received += received; }
+
+void OllamaConnection::invalidateRuntime() {
+    if (!m_runtimeReply) return;
+    disconnect(m_runtimeReply, nullptr, this, nullptr);
+    m_runtimeReply->abort();
+    m_runtimeReply->deleteLater();
+    m_runtimeReply = nullptr;
+}
+
+void OllamaConnection::runtimeUnavailable() {
+    m_runningModels.clear();
+    m_runtimeStatus = i18n("Model stats unavailable");
+    emit runtimeChanged();
+}
+
+void OllamaConnection::refreshRuntime() {
+    if (m_runtimeReply || (m_state != "ready" && m_state != "empty")) return;
+    QNetworkRequest request(QUrl(m_endpoint + "/api/ps"));
+    request.setTransferTimeout(5000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
+    auto *reply = m_network.get(request);
+    m_runtimeReply = reply;
+    auto data = std::make_shared<QByteArray>();
+    connect(reply, &QIODevice::readyRead, this, [this, reply, data] {
+        const auto chunk = reply->readAll();
+        recordTraffic(0, chunk.size());
+        data->append(chunk);
+        if (data->size() > 1024 * 1024) {
+            invalidateRuntime();
+            runtimeUnavailable();
+        }
+    });
+    connect(reply, &QNetworkReply::finished, this, [this, reply, data] {
+        m_runtimeReply = nullptr;
+        const auto tail = reply->readAll();
+        recordTraffic(0, tail.size());
+        data->append(tail);
+        const bool success = reply->error() == QNetworkReply::NoError
+            && reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200;
+        reply->deleteLater();
+        QJsonParseError error;
+        const auto doc = QJsonDocument::fromJson(*data, &error);
+        if (!success || data->size() > 1024 * 1024 || error.error != QJsonParseError::NoError
+            || !doc.isObject() || !doc.object().value("models").isArray()) {
+            runtimeUnavailable(); return;
+        }
+        const auto models = doc.object().value("models").toArray();
+        if (models.size() > 128) { runtimeUnavailable(); return; }
+        QVariantList entries;
+        for (const auto &value : models) {
+            const auto model = value.toObject();
+            const auto name = model.value("name").toString(model.value("model").toString());
+            const auto size = model.value("size").toInteger(-1);
+            const auto gpu = model.value("size_vram").toInteger(-1);
+            // Missing metrics must not look like CPU-only placement.
+            if (name.isEmpty() || size <= 0 || gpu < 0 || gpu > size) {
+                runtimeUnavailable(); return;
+            }
+            const double fraction = double(gpu) / double(size);
+            entries.append(QVariantMap{{"name", name}, {"gpu", fraction}, {"cpu", 1.0 - fraction},
+                {"size", size}, {"gpuBytes", gpu}, {"cpuBytes", size - gpu}});
+        }
+        // Do not reset QML delegates on every poll when nothing changed.
+        const auto status = entries.isEmpty() ? i18n("No models loaded") : QString();
+        if (entries != m_runningModels || status != m_runtimeStatus) {
+            m_runningModels = entries;
+            m_runtimeStatus = status;
+            emit runtimeChanged();
+        }
+    });
+}

@@ -2,6 +2,10 @@
 
 A native KDE frontend for Ollama, built with C++20, Qt 6, and Kirigami.
 
+![Kllama showing Markdown chat, a text attachment, and CPU/GPU model placement bars](docs/images/kllama.png)
+
+*Native KDE interface with demonstration content.*
+
 ## M3: Markdown and text attachments
 
 Kllama now includes an About dialog, streaming chat, full conversation history in requests, Stop, retry/regenerate, and edit-and-resend with explicit replacement of later messages. Conversations, per-chat models, and drafts are stored in SQLite; interrupted responses retain partial text. The sidebar supports title search, rename, and deletion. Only one app instance may write to a data directory at a time.
@@ -9,6 +13,8 @@ Kllama now includes an About dialog, streaming chat, full conversation history i
 Assistant responses render selectable Markdown: headings, emphasis, lists, quotes, tables, links, inline code, and fenced code with basic keyword/string/comment highlighting. User messages remain plain text. Copy Markdown preserves the raw response, and code copy excludes fences. Export Markdown saves the conversation and attached filenames; it does not bundle the attachment contents. Enter sends and Shift+Enter inserts a newline; reverse this in Connection settings. Copy/paste context menus and standard keyboard shortcuts work in the composer and transcript. History navigation, connection/model changes, and edits are disabled during generation; Stop first. You can draft your next message while waiting.
 
 Local statistics sample accessible Ollama process RSS, including model runners and other descendants, every five seconds off the UI thread. The sum includes other Ollama sessions, may double-count shared pages, and is not GPU memory. Remote statistics count outgoing chat and capability-inspection JSON payloads, received API payloads, and their combined recent transfer rate, excluding HTTP/TLS overhead and other clients. Counters reset when saving a connection or restarting Kllama; Refresh reuses the current counter session.
+
+The sidebar shows animated CPU/GPU **model placement** bars for each loaded model, refreshed every five seconds through `GET /api/ps`. Percentages follow the model memory split reported by Ollama (`size` and `size_vram`), as in `ollama ps`; they do not measure processor activity or total hardware capacity. This works with local and remote endpoints without installing an agent. No loaded models and unavailable/unsupported metrics are shown explicitly. Remote payload counters include these polling responses. True remote CPU/GPU activity and host RAM monitoring would require a separate authenticated host telemetry service; the standard Ollama endpoint does not provide those measurements.
 
 Requests time out after three minutes without incoming bytes. Stream records are capped at 2 MiB and total responses at 16 MiB. Partial output is checkpointed approximately once per second and saved on Stop/normal exit. The app requests non-thinking output (`think: false`); if the backend nevertheless sends thinking events, the activity label reports processing without presenting them as answer text. Tools are not executed in M3.
 
@@ -83,4 +89,3 @@ KLLAMA_LIVE_TEST=1 KLLAMA_LIVE_MODEL=gemma4:e4b \
 ```
 
 `--smoke-test` opens settings and About then exits. `--screenshot <absolute-path.png>` captures the window and exits. `KLLAMA_NO_AUTOCONNECT=1` skips the initial API request. Use isolated `XDG_DATA_HOME` and `XDG_CONFIG_HOME` directories for manual UI test runs.
-

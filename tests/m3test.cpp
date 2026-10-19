@@ -30,6 +30,44 @@ private slots:
         QSettings::setDefaultFormat(QSettings::IniFormat);QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,settings.path());
     }
     void init(){QSettings().clear();}
+    void runtimePlacement() {
+        Fixture server;QVERIFY(server.listen(QHostAddress::LocalHost));
+        server.runningModels={QJsonObject{{"name","mixed"},{"size",10000},{"size_vram",8100}},
+            QJsonObject{{"name","cpu-only"},{"size",10000},{"size_vram",0}},
+            QJsonObject{{"name","gpu-only"},{"size",10000},{"size_vram",10000}}};
+        OllamaConnection connection;
+        QVERIFY(connection.configure(server.endpoint(),false).isEmpty());
+        QTRY_COMPARE(connection.runningModels().size(),3);
+        QCOMPARE(connection.runningModels().at(0).toMap().value("cpu").toDouble(),1.0-0.81);
+        QCOMPARE(connection.runningModels().at(0).toMap().value("gpu").toDouble(),0.81);
+        QCOMPARE(connection.runningModels().at(1).toMap().value("cpu").toDouble(),1.0);
+        QCOMPARE(connection.runningModels().at(2).toMap().value("gpu").toDouble(),1.0);
+        QVERIFY(connection.runtimeStatus().isEmpty());
+        server.runningModels={};connection.refreshRuntime();
+        QTRY_VERIFY(!connection.runtimeStatus().isEmpty());QVERIFY(connection.runningModels().isEmpty());
+        for(const auto &bad : {QByteArray("not JSON"),QByteArray("{\"models\":{}}"),
+            QByteArray("{\"models\":[{\"name\":\"missing-metric\",\"size\":100}]}"),
+            QByteArray("{\"models\":[{\"name\":\"invalid\",\"size\":100,\"size_vram\":101}]}"),
+            QByteArray("{\"models\":[{\"name\":\"invalid\",\"size\":0,\"size_vram\":0}]}")}) {
+            QSignalSpy changed(&connection,&OllamaConnection::runtimeChanged);
+            server.runtimeResponses.append(Response{{bad}});connection.refreshRuntime();
+            QTRY_VERIFY(!changed.isEmpty());QVERIFY(connection.runningModels().isEmpty());
+            QVERIFY(connection.runtimeStatus().contains("unavailable"));QCOMPARE(connection.state(),QString("ready"));
+        }
+        server.runtimeResponses.append(Response{{"unsupported"},404});
+        QSignalSpy changed(&connection,&OllamaConnection::runtimeChanged);connection.refreshRuntime();
+        QTRY_VERIFY(!changed.isEmpty());QVERIFY(connection.runtimeStatus().contains("unavailable"));
+        // An old endpoint's delayed response must never populate a new connection.
+        server.runtimeResponses.append(Response{{"{\"models\":[", "{\"name\":\"old\",\"size\":100,\"size_vram\":10}]}"},200,true,200});
+        const auto count=server.runtimeCount;connection.refreshRuntime();QTRY_VERIFY(server.runtimeCount>count);
+        Fixture next;QVERIFY(next.listen(QHostAddress::LocalHost));
+        next.runningModels={QJsonObject{{"name","new"},{"size",100},{"size_vram",100}}};
+        QVERIFY(connection.configure(next.endpoint(),true).isEmpty());
+        QTRY_COMPARE(connection.runningModels().size(),1);
+        QCOMPARE(connection.runningModels().first().toMap().value("name").toString(),QString("new"));
+        QTest::qWait(250);
+        QCOMPARE(connection.runningModels().first().toMap().value("name").toString(),QString("new"));
+    }
     void automaticContext() {
         Fixture server;QVERIFY(server.listen(QHostAddress::LocalHost));
         OllamaConnection connection;

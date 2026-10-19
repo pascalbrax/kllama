@@ -7,6 +7,7 @@
 #include <QElapsedTimer>
 #include <QFutureWatcher>
 #include <QHash>
+#include <QVariantList>
 
 class OllamaConnection : public QObject {
     Q_OBJECT
@@ -20,9 +21,13 @@ class OllamaConnection : public QObject {
     Q_PROPERTY(bool busy READ busy NOTIFY statusChanged)
     Q_PROPERTY(QString statistics READ statistics NOTIFY statisticsChanged)
     Q_PROPERTY(int elapsedSeconds READ elapsedSeconds NOTIFY statisticsChanged)
+    Q_PROPERTY(QVariantList runningModels READ runningModels NOTIFY runtimeChanged)
+    Q_PROPERTY(QString runtimeStatus READ runtimeStatus NOTIFY runtimeChanged)
 public:
     explicit OllamaConnection(QObject *parent = nullptr);
-    ~OllamaConnection() override { invalidateReply(); }
+    ~OllamaConnection() override { invalidateReply(); invalidateRuntime(); }
+    QVariantList runningModels() const { return m_runningModels; }
+    QString runtimeStatus() const { return m_runtimeStatus; }
     QString endpoint() const { return m_endpoint; }
     bool local() const { return m_local; }
     bool animations() const { return m_animations; }
@@ -40,19 +45,27 @@ public:
     Q_INVOKABLE QString configure(const QString &endpoint, bool local);
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void cancel();
+    Q_INVOKABLE void refreshRuntime();
 signals:
     void configurationChanged();
     void selectedModelChanged();
     void modelsChanged();
     void statusChanged();
     void statisticsChanged();
+    void runtimeChanged();
 private:
     void setStatus(const QString &state, const QString &message);
     void invalidateReply();
     void sampleMemory();
+    void invalidateRuntime();
+    void runtimeUnavailable();
     QSettings m_settings;
     QNetworkAccessManager m_network;
     QPointer<QNetworkReply> m_reply;
+    QPointer<QNetworkReply> m_runtimeReply;
+    QTimer m_runtimeTimer;
+    QVariantList m_runningModels;
+    QString m_runtimeStatus;
     QTimer m_timeout, m_tick, m_memoryTimer;
     QFutureWatcher<qint64> m_memoryWatcher;
     QElapsedTimer m_elapsed, m_rateClock;
