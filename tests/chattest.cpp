@@ -20,6 +20,9 @@
 #include <QMimeData>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QPdfWriter>
+#include <QPainter>
+#include <QImage>
 
 #include "httpfixture.h"
 
@@ -46,6 +49,74 @@ private slots:
         QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,settings.path());
     }
     void init() { QSettings().clear(); }
+    void thinkingFeedback() {
+        Fixture server;QVERIFY(server.listen(QHostAddress::LocalHost));OllamaConnection connection;
+        QVERIFY(connection.configure(server.endpoint(),false).isEmpty());QTRY_COMPARE(connection.state(),QString("ready"));
+        QTemporaryDir data;ChatSession chat(&connection,data.path());MarkdownRenderer markdown;
+        QQmlApplicationEngine engine;KLocalization::setupLocalizedContext(&engine);
+        engine.rootContext()->setContextProperty("ollama",&connection);engine.rootContext()->setContextProperty("chat",&chat);engine.rootContext()->setContextProperty("markdown",&markdown);
+        engine.rootContext()->setContextProperty("appInfo",QVariantMap{{"version","0.4.0"},{"qtVersion",qVersion()},{"frameworksVersion","test"},{"dataDirectory",data.path()}});
+        QSignalSpy warnings(&engine,&QQmlEngine::warnings);engine.load(QUrl::fromLocalFile(QStringLiteral(KLLAMA_SOURCE_DIR)+"/src/qml/Main.qml"));QVERIFY(!engine.rootObjects().isEmpty());
+        auto *window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());QVERIFY(QTest::qWaitForWindowExposed(window));
+        const auto thinking=QJsonDocument(QJsonObject{{"message",QJsonObject{{"role","assistant"},{"thinking","private reasoning must not be displayed"},{"content",""}}},{"done",false}}).toJson(QJsonDocument::Compact)+'\n';
+        server.responses.append(Response{{"",thinking,thinking,Fixture::record("Answer"),thinking,Fixture::record(" done",true)},200,true,250});
+        chat.setDraft("A question");chat.send();QCOMPARE(chat.state(),QString("waiting"));
+        QTRY_VERIFY(findVisual(window->contentItem(),"modelActivity_1"));
+        auto *indicator=findVisual(window->contentItem(),"modelActivity_1");QVERIFY(indicator);QTRY_VERIFY(indicator->isVisible());
+        auto *label=findVisual(window->contentItem(),"modelActivityLabel_1");QVERIFY(label);QCOMPARE(label->property("text").toString(),QString("Waiting for model…"));
+        QTRY_COMPARE(chat.state(),QString("thinking"));QVERIFY(indicator->isVisible());QCOMPARE(label->property("text").toString(),QString("Thinking…"));QVERIFY(chat.messageText(1).isEmpty());QVERIFY(chat.messages()->data(chat.messages()->index(1,0),MessageModel::Reasoning).toString().isEmpty());
+        connection.setAnimations(false);QVERIFY(indicator->isVisible());
+        if(qEnvironmentVariableIsSet("KLLAMA_THINKING_SCREENSHOT"))QVERIFY(window->grabWindow().save(qEnvironmentVariable("KLLAMA_THINKING_SCREENSHOT")));
+        QTRY_COMPARE(chat.state(),QString("generating"));QTRY_VERIFY(!indicator->isVisible());QCOMPARE(chat.messageText(1),QString("Answer"));
+        QTRY_COMPARE(chat.state(),QString("thinking"));QTRY_VERIFY(indicator->isVisible());
+        QTRY_COMPARE(chat.state(),QString("complete"));QVERIFY(!indicator->isVisible());QCOMPARE(chat.messageText(1),QString("Answer done"));
+        server.responses.append(Response{{thinking,Fixture::record("late",true)},200,true,400});chat.setDraft("Another");chat.send();QTRY_COMPARE(chat.state(),QString("thinking"));
+        chat.stop();QCOMPARE(chat.state(),QString("stopped"));QVERIFY(!chat.busy());
+        auto *stopped=findVisual(window->contentItem(),"modelActivity_3");if(stopped)QVERIFY(!stopped->isVisible());
+        QCOMPARE(warnings.count(),0);
+    }
+    void optionalReasoning() {
+        Fixture server;server.modelDetails.insert("fixture:latest",QJsonObject{{"capabilities",QJsonArray{"completion","thinking"}}});QVERIFY(server.listen(QHostAddress::LocalHost));
+        OllamaConnection connection;QVERIFY(connection.configure(server.endpoint(),false).isEmpty());QTRY_COMPARE(connection.state(),QString("ready"));
+        QTemporaryDir data;
+        const auto reasoning=QJsonDocument(QJsonObject{{"message",QJsonObject{{"role","assistant"},{"thinking","Compare the supplied values."},{"content",""}}},{"done",false}}).toJson(QJsonDocument::Compact)+'\n';
+        {
+            ChatSession chat(&connection,data.path());QVERIFY(!chat.showReasoning());chat.setShowReasoning(true);MarkdownRenderer markdown;
+            QTRY_COMPARE(qobject_cast<ModelCapabilities*>(chat.capabilities())->state(),QString("ready"));
+            QQmlApplicationEngine engine;KLocalization::setupLocalizedContext(&engine);
+            engine.rootContext()->setContextProperty("ollama",&connection);engine.rootContext()->setContextProperty("chat",&chat);engine.rootContext()->setContextProperty("markdown",&markdown);
+            engine.rootContext()->setContextProperty("appInfo",QVariantMap{{"version","0.4.0"},{"qtVersion",qVersion()},{"frameworksVersion","test"},{"dataDirectory",data.path()}});
+            QSignalSpy warnings(&engine,&QQmlEngine::warnings);engine.load(QUrl::fromLocalFile(QStringLiteral(KLLAMA_SOURCE_DIR)+"/src/qml/Main.qml"));QVERIFY(!engine.rootObjects().isEmpty());
+            auto *window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());QVERIFY(QTest::qWaitForWindowExposed(window));
+            const auto done=QJsonDocument(QJsonObject{{"message",QJsonObject{{"role","assistant"},{"content","Done"}}},{"done",true},{"prompt_eval_count",321},{"eval_count",45}}).toJson(QJsonDocument::Compact)+'\n';
+            server.responses.append(Response{{reasoning,done},200,true,300});chat.setDraft("Compare these");chat.send();
+            QTRY_COMPARE(chat.state(),QString("thinking"));QTRY_VERIFY(findVisual(window->contentItem(),"reasoningToggle_1"));
+            auto *toggle=findVisual(window->contentItem(),"reasoningToggle_1");auto *text=findVisual(window->contentItem(),"reasoningText_1");QVERIFY(toggle);QVERIFY(text);
+            QVERIFY(toggle->isVisible());QVERIFY(!text->isVisible());
+            QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,toggle->mapToScene(QPointF(toggle->width()/2,toggle->height()/2)).toPoint());QTRY_VERIFY(text->isVisible());
+            QCOMPARE(text->property("text").toString(),QString("Compare the supplied values."));
+            QTRY_COMPARE(chat.state(),QString("complete"));QCOMPARE(chat.messageText(1),QString("Done"));QVERIFY(server.requests.first().value("think").toBool());
+            QCOMPARE(chat.messages()->data(chat.messages()->index(1,0),MessageModel::Reasoning).toString(),QString("Compare the supplied values."));
+            QCOMPARE(chat.messages()->data(chat.messages()->index(0,0),MessageModel::TokenCount).toLongLong(),qint64(321));
+            QCOMPARE(chat.messages()->data(chat.messages()->index(1,0),MessageModel::TokenCount).toLongLong(),qint64(45));
+            for(int row=0;row<2;++row){
+                auto *tokens=findVisual(window->contentItem(),"bubbleTokens_"+QString::number(row));auto *bubble=findVisual(window->contentItem(),"chatBubble_"+QString::number(row));QVERIFY(tokens);QVERIFY(bubble);QTRY_VERIFY(tokens->isVisible());
+                QCOMPARE(tokens->property("text").toString(),row==0?QString("321 input tokens"):QString("45 output tokens"));
+                QVERIFY(tokens->mapToScene(QPointF(0,0)).y()>=bubble->mapToScene(QPointF(0,bubble->height())).y());
+            }
+            QCOMPARE(chat.status(),QString("Completed"));
+            if(qEnvironmentVariableIsSet("KLLAMA_REASONING_SCREENSHOT"))QVERIFY(window->grabWindow().save(qEnvironmentVariable("KLLAMA_REASONING_SCREENSHOT")));
+            chat.setShowReasoning(false);QTRY_VERIFY(!toggle->isVisible());QVERIFY(!text->isVisible());
+            chat.setShowReasoning(true);QCOMPARE(warnings.count(),0);
+        }
+        ChatSession restored(&connection,data.path());QVERIFY(restored.showReasoning());QCOMPARE(restored.messages()->data(restored.messages()->index(1,0),MessageModel::Reasoning).toString(),QString("Compare the supplied values."));
+        QCOMPARE(restored.messages()->data(restored.messages()->index(0,0),MessageModel::TokenCount).toLongLong(),qint64(321));
+        QCOMPARE(restored.messages()->data(restored.messages()->index(1,0),MessageModel::TokenCount).toLongLong(),qint64(45));
+        auto *caps=qobject_cast<ModelCapabilities*>(restored.capabilities());QTRY_COMPARE(caps->state(),QString("ready"));
+        server.modelDetails.insert("fixture:latest",QJsonObject{{"capabilities",QJsonArray{"completion"}}});caps->refresh();QTRY_VERIFY(!caps->features().contains("thinking"));QTRY_COMPARE(caps->state(),QString("ready"));
+        server.responses.append(Response{{Fixture::record("Next",true)}});restored.setDraft("Continue");restored.send();QTRY_COMPARE(restored.state(),QString("complete"));QVERIFY(!server.requests.last().value("think").toBool());
+        for(const auto &message:server.requests.last().value("messages").toArray()){QVERIFY(!message.toObject().contains("reasoning"));QVERIFY(!message.toObject().contains("thinking"));QVERIFY(!message.toObject().contains("tokens"));}
+    }
     void streamHistoryEditAndPersistence() {
         Fixture server; QVERIFY(server.listen(QHostAddress::LocalHost));
         OllamaConnection connection; QVERIFY(connection.configure(server.endpoint(),false).isEmpty());
@@ -259,6 +330,9 @@ private slots:
         const auto answer=QString("# Findings\n\nThe value is **731**.\n\n| Source | Value |\n|---|---|\n| notes.md | 731 |\n\n```cpp\nconst int value = 731; // ")+QString("long code ").repeated(24)+"\n```\n\n![blocked](https://example.invalid/never-fetch.png)";
         server.responses.append(Response{{Fixture::record(answer.left(90)),Fixture::record(answer.mid(90),true)},200,true,120});
         chat.setDraft("Summarize the attached notes");chat.send();QTRY_COMPARE(chat.state(),QString("complete"));
+        QVERIFY(attachments->entries().isEmpty());QCOMPARE(attachments->allEntries().size(),2);
+        auto *sent=findVisual(window->contentItem(),"sentAttachment_0_"+entry.value("id").toString());QVERIFY(sent);QVERIFY(QMetaObject::invokeMethod(sent,"clicked"));
+        QTRY_VERIFY(preview->property("visible").toBool());QVERIFY(previewText->property("text").toString().contains("731"));QVERIFY(QMetaObject::invokeMethod(preview,"close"));
         auto *view=window->findChild<QObject*>("transcript");QVERIFY(view);QVERIFY(QMetaObject::invokeMethod(view,"positionViewAtEnd"));QTest::qWait(100);
         auto *response=findVisual(window->contentItem(),"messageText_1");QVERIFY(response);QVERIFY(plainText(response).contains("Findings"));QVERIFY(plainText(response).contains("731"));QVERIFY(!response->property("text").toString().contains("<img",Qt::CaseInsensitive));
         QVERIFY(response->property("text").toString().contains("<table"));
@@ -269,6 +343,36 @@ private slots:
         auto *settingsDialog=window->findChild<QObject*>("settingsDialog");QVERIFY(settingsDialog);
         QVERIFY(settingsDialog->property("height").toReal()<window->height());
         QCOMPARE(warnings.count(),0);
+    }
+    void documentAndImagePreview() {
+        Fixture server;server.modelDetails.insert("fixture:latest",QJsonObject{{"capabilities",QJsonArray{"completion","vision"}}});
+        QVERIFY(server.listen(QHostAddress::LocalHost));OllamaConnection connection;QVERIFY(connection.configure(server.endpoint(),false).isEmpty());QTRY_COMPARE(connection.state(),QString("ready"));
+        QTemporaryDir data,files;ChatSession chat(&connection,data.path());MarkdownRenderer markdown;chat.setContextTokens(16384);
+        auto *attachments=qobject_cast<AttachmentManager*>(chat.attachments());QTRY_VERIFY(attachments->visionAllowed());
+        const auto pdfPath=files.filePath("reference.pdf"),imagePath=files.filePath("diagram.png");
+        {QPdfWriter writer(pdfPath);QPainter painter(&writer);painter.drawText(100,500,"Reference value: 731");}
+        QImage image(320,200,QImage::Format_RGB32);image.fill(QColor("#3584e4"));QVERIFY(image.save(imagePath));
+        attachments->addFiles({QUrl::fromLocalFile(pdfPath),QUrl::fromLocalFile(imagePath)});QTRY_VERIFY(!attachments->busy());QVERIFY(attachments->issue().isEmpty());
+        QQmlApplicationEngine engine;KLocalization::setupLocalizedContext(&engine);
+        engine.rootContext()->setContextProperty("ollama",&connection);engine.rootContext()->setContextProperty("chat",&chat);engine.rootContext()->setContextProperty("markdown",&markdown);
+        engine.rootContext()->setContextProperty("appInfo",QVariantMap{{"version","0.4.0"},{"qtVersion",qVersion()},{"frameworksVersion","test"},{"dataDirectory",data.path()}});
+        QSignalSpy warnings(&engine,&QQmlEngine::warnings);engine.load(QUrl::fromLocalFile(QStringLiteral(KLLAMA_SOURCE_DIR)+"/src/qml/Main.qml"));QVERIFY(!engine.rootObjects().isEmpty());
+        auto *window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());QVERIFY(QTest::qWaitForWindowExposed(window));
+        const auto entries=attachments->entries();
+        QVERIFY(QMetaObject::invokeMethod(window,"previewAttachment",Q_ARG(QVariant,entries.at(0).toMap().value("id")),Q_ARG(QVariant,QString("reference.pdf"))));QTest::qWait(80);
+        QCOMPARE(window->property("previewSources").toList().size(),1);
+        auto *text=window->findChild<QObject*>("attachmentPreviewText");QVERIFY(text);QVERIFY(text->property("text").toString().contains("731"));
+        auto *choice=window->findChild<QObject*>("sourceChoice");QVERIFY(choice);QVERIFY(choice->setProperty("currentIndex",1));
+        QVERIFY(QMetaObject::invokeMethod(choice,"activated",Q_ARG(int,1)));QVERIFY(text->property("text").toString().contains("731"));QVERIFY(!text->property("text").toString().contains("[Page 1]"));
+        if(qEnvironmentVariableIsSet("KLLAMA_M4_UI_SCREENSHOT")){QTest::qWait(350);QVERIFY(window->grabWindow().save(qEnvironmentVariable("KLLAMA_M4_UI_SCREENSHOT")));}
+        auto *dialog=window->findChild<QObject*>("attachmentPreviewDialog");QVERIFY(dialog);QVERIFY(QMetaObject::invokeMethod(dialog,"close"));
+        QVERIFY(QMetaObject::invokeMethod(window,"previewAttachment",Q_ARG(QVariant,entries.at(1).toMap().value("id")),Q_ARG(QVariant,QString("diagram.png"))));QTest::qWait(80);
+        QVERIFY(!window->property("previewImageUrl").toUrl().isEmpty());
+        if(qEnvironmentVariableIsSet("KLLAMA_M4_IMAGE_SCREENSHOT")){QTest::qWait(350);QVERIFY(window->grabWindow().save(qEnvironmentVariable("KLLAMA_M4_IMAGE_SCREENSHOT")));}
+        QVERIFY(QMetaObject::invokeMethod(dialog,"close"));
+        window->resize(640,620);QTest::qWait(80);
+        QVERIFY(QMetaObject::invokeMethod(window,"previewAttachment",Q_ARG(QVariant,entries.at(0).toMap().value("id")),Q_ARG(QVariant,QString("reference.pdf"))));QTest::qWait(80);
+        QVERIFY(dialog->property("height").toReal()<window->height());QCOMPARE(warnings.count(),0);
     }
     void stopAndInterruptedRecovery() {
         Fixture server; QVERIFY(server.listen(QHostAddress::LocalHost));

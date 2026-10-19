@@ -20,7 +20,7 @@ QString ModelCapabilities::summary() const {
     if (m_state=="error") return i18n("Model inspection failed · Retry available");
     if (m_state!="ready") return i18n("Model input capabilities unknown");
     if(!m_features.contains("completion"))return i18n("No text-generation capability reported");
-    return m_features.contains("vision")?i18n("Text · Vision reported (image input arrives in M4)"):i18n("Text · No vision capability reported");
+    return m_features.contains("vision")?i18n("Text · Images (PNG/JPEG)"):i18n("Text · No vision capability reported");
 }
 void ModelCapabilities::inspect(const QString &model,bool force) {
     const auto endpoint=m_connection->endpoint();
@@ -72,6 +72,6 @@ void ModelCapabilities::apply(const QJsonObject &object) {
     }
     if(!known) m_features.clear();
     m_state=known?"ready":"unknown";
-    m_detail=known?i18n("Reported features: %1. Kllama currently attaches extracted text/code; images, PDFs and other native file inputs are not enabled in M3.",m_features.join(", ")):i18n("The server did not report valid capability metadata. Extracted text remains usable; native input support is unknown.");
+    m_detail=known?i18n("Reported features: %1. Kllama supports text, extracted PDF/DOCX content, and PNG/JPEG images when vision is reported. Audio and video inputs are not implemented.",m_features.join(", ")):i18n("The server did not report valid capability metadata. Extracted text remains usable; native input support is unknown.");
     emit changed();
 }

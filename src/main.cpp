@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
     QCoreApplication::setOrganizationName("Kllama");
     QCoreApplication::setOrganizationDomain("kllama.org");
     QCoreApplication::setApplicationName("kllama");
-    QCoreApplication::setApplicationVersion("0.3.0");
+    QCoreApplication::setApplicationVersion("0.4.0");
     QGuiApplication::setApplicationDisplayName("Kllama");
     QGuiApplication::setDesktopFileName("org.kllama.Kllama");
     KLocalizedString::setApplicationDomain("kllama");

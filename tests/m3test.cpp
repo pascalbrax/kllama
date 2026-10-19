@@ -157,8 +157,9 @@ private slots:
         {
             ChatSession reopened(&connection,data.path());QCOMPARE(reopened.conversationId(),id);
             auto *attachments=qobject_cast<AttachmentManager*>(reopened.attachments());QTRY_VERIFY(!attachments->busy());
-            QCOMPARE(attachments->entries().size(),2);
-            for(const auto &entry:attachments->entries())QCOMPARE(entry.toMap().value("state").toString(),QString("ready"));
+            QCOMPARE(attachments->entries().size(),1);
+            QCOMPARE(attachments->allEntries().size(),2);
+            for(const auto &entry:attachments->allEntries())QCOMPARE(entry.toMap().value("state").toString(),QString("ready"));
             QVERIFY(attachments->referenceText().contains("const int answer"));
             const auto copies=data.path()+"/attachments/"+id;QVERIFY(QDir(copies).exists());
             reopened.deleteConversation();QVERIFY(!QDir(copies).exists());

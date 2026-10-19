@@ -2,11 +2,11 @@
 
 A native KDE frontend for Ollama, built with C++20, Qt 6, and Kirigami.
 
-![Kllama showing Markdown chat, a text attachment, and CPU/GPU model placement bars](docs/images/kllama.png)
+![Kllama showing Markdown chat, PDF and image attachments, and Ollama statistics](docs/images/kllama.png)
 
 *Native KDE interface with demonstration content.*
 
-## M3: Markdown and text attachments
+## M4: Documents and images
 
 Kllama now includes an About dialog, streaming chat, full conversation history in requests, Stop, retry/regenerate, and edit-and-resend with explicit replacement of later messages. Conversations, per-chat models, and drafts are stored in SQLite; interrupted responses retain partial text. The sidebar supports title search, rename, and deletion. Only one app instance may write to a data directory at a time.
 
@@ -16,19 +16,40 @@ Local statistics sample accessible Ollama process RSS, including model runners a
 
 The sidebar shows animated CPU/GPU **model placement** bars for each loaded model, refreshed every five seconds through `GET /api/ps`. Percentages follow the model memory split reported by Ollama (`size` and `size_vram`), as in `ollama ps`; they do not measure processor activity or total hardware capacity. This works with local and remote endpoints without installing an agent. No loaded models and unavailable/unsupported metrics are shown explicitly. Remote payload counters include these polling responses. True remote CPU/GPU activity and host RAM monitoring would require a separate authenticated host telemetry service; the standard Ollama endpoint does not provide those measurements.
 
-Requests time out after three minutes without incoming bytes. Stream records are capped at 2 MiB and total responses at 16 MiB. Partial output is checkpointed approximately once per second and saved on Stop/normal exit. The app requests non-thinking output (`think: false`); if the backend nevertheless sends thinking events, the activity label reports processing without presenting them as answer text. Tools are not executed in M3.
+Requests time out after three minutes without incoming bytes. Stream records are capped at 2 MiB and total responses at 16 MiB. Partial output is checkpointed approximately once per second and saved on Stop/normal exit. Reasoning is optional: enable **Connection settings → Allow viewing model reasoning (experimental)** to request thinking from models that report support. Available reasoning appears behind a per-reply **Show reasoning** button and can be expanded, selected or copied during processing and afterward. It is stored separately with the conversation, capped at 1 MiB per reply, and excluded from subsequent model history and Markdown answer exports. It shares the existing 1,024-token generation budget with the answer. Turning the option off hides stored reasoning and stops capturing new reasoning; existing saved reasoning remains until the conversation is deleted. Models that do not supply reasoning cannot display it.
+
+With this option off (the default), Kllama requests non-thinking output and does not save reasoning. If Ollama sends thinking events anyway, the pulsing-dot card reports the phase without showing the text. Before such events it says “Waiting for model…”. Disabling animations leaves a static indicator. Tools are not executed yet.
 
 ## Attach files and inspect models
 
-Use Attach file, drop local files onto the chat, paste copied file URLs with Ctrl+V, or use Paste files. Ordinary clipboard text continues to paste into the composer. M3 accepts valid UTF-8 text/code, Markdown, JSON, CSV, and similar textual inputs: up to eight files, each at most 512 KiB. Empty files, unsupported binary/image/document content, invalid UTF-8, oversized files, and duplicate content receive explicit errors. Cancel, retry, remove, and inspect the exact extracted text with Preview. Navigation waits for preparation to finish or be cancelled; the background worker pool is limited to two jobs.
+Use **Attach file**, drop local files onto the chat, or paste copied file URLs and clipboard images with Ctrl+V or **Paste attachment**. Ordinary clipboard text continues to paste into the composer. Preparation runs on two background workers with observable stages, cancellation, retry and preview.
 
-Attachments belong to the conversation and are included as delimited reference material on subsequent requests. Kllama retains an owner-readable/writable managed original and extracted text, so removing the external source does not break a reopened conversation. Remove deletes the managed copy; deleting the conversation deletes its managed attachment directory. Original source files are never changed.
+Up to eight attachments are allowed per conversation:
 
-Model inspection uses `POST /api/show`, not a chat prompt. The summary and Model details report metadata from the current endpoint/model. Results are cached in memory by endpoint, model, and digest (or modification identity), and refreshed after identity changes; explicit inspection refresh discards cached results. Late replies from a previous selection are ignored. Failed or missing metadata is shown as unknown, never as confirmed native attachment support. Reported vision support is displayed, but native images and PDF/DOCX extraction remain M4. M3 does not infer arbitrary file support from a model family such as Qwen.
+| Input | Limits and behavior |
+|---|---|
+| UTF-8 text, code, Markdown, JSON, CSV | 512 KiB per file |
+| PDF | 20 MiB input, 200 pages, 512 KiB extracted text; page references |
+| DOCX | 20 MiB input, 512 KiB extracted text; section and paragraph references |
+| PNG/JPEG | Confirmed vision model required; up to four images, 10 MiB each and 20 MiB combined; maximum 8,192 pixels per side and 12 megapixels |
+
+**Preview** shows exactly the extracted text or the attached image. PDF/DOCX previews let you choose a source excerpt and open the managed original; PDF page navigation depends on the viewer. These source locations come from extraction. Locations generated in assistant answers are not independently verified.
+
+PDF extraction uses `pdfinfo` and `pdftotext` from **poppler-utils**. Scanned/image-only PDFs need OCR, which is deferred; partially scanned PDFs show which pages lack text. Encrypted PDFs are rejected. DOCX extraction uses **unzip** and reads body paragraphs and table text from `word/document.xml`; headers, footers, footnotes, endnotes, comments, deleted text, text boxes and embedded images are excluded and the preview reports this limitation. Paragraph numbers follow document-body XML order (including table paragraphs), rather than Word list numbering. ZIP archives are never unpacked into the filesystem. Archive XML is capped at 8 MiB, entity declarations are rejected, and each extraction subprocess has a 45-second time limit. Missing tools produce an actionable error. Existing text chat remains available.
+
+PNG/JPEG contents and dimensions are validated before use. Models must explicitly report `vision`; a model name such as Qwen is not sufficient. Images are sent as base64 in Ollama's chat `images` array, and remain available in follow-up questions. Switching to a text-only or unknown model blocks sending until images are removed or a vision model is selected. Image previews only open the managed local attachment; Markdown responses still cannot fetch images. Audio, video, OCR and other native file formats are deferred.
+
+Attachments are staged in the composer until Send succeeds locally, then clear from that area and appear on their original user message. Click a sent attachment to preview it; retry preparation or remove it from that message when needed. Follow-up questions include its content once at the original point in chat history, rather than attaching it again to each new message. Ollama still receives the full history on each request, so earlier file content can be transmitted again as history. Regenerate/retry uses the original message attachments and leaves staged draft files alone. Editing an earlier message preserves its attachments and discards copies belonging only to the removed later messages.
+
+Kllama retains an owner-readable/writable managed original and extracted text, so removing the external source does not break a reopened conversation. Removing an attachment deletes its managed copy when no message uses it; deleting the conversation deletes all its managed attachments. Original source files are never changed. Older conversation-wide attachments without ownership metadata are associated with the earliest user message when reopened, preserving their history context.
+
+Model inspection uses `POST /api/show`, not a chat prompt. The summary and Model details report metadata from the current endpoint/model. Results are cached in memory by endpoint, model, and digest (or modification identity), and refreshed after identity changes; explicit inspection refresh discards cached results. Late replies from a previous selection are ignored. Failed or missing metadata is shown as unknown, never as confirmed native attachment support. Reported vision support enables the implemented PNG/JPEG path. PDF/DOCX extraction works independently with any text-generation model. Other reported modalities do not enable unimplemented input paths.
 
 ## Context budget and Markdown resources
 
-The context setting defaults to 4,096 tokens and is capped by the model maximum when metadata reports one. Kllama supplies this explicit `num_ctx` and a 1,024-token output cap to Ollama. The input estimate conservatively counts UTF-8 bytes plus message/file overhead, reserves 1,024 output tokens and 256 safety tokens, and blocks sending when the estimate will not fit. Details explains how to remove/shorten content, start a new conversation, or increase context in Connection settings. Drafts and history remain intact on a blocked send. Model maxima may be unknown and the estimate is not a tokenizer count; Kllama never truncates input itself.
+The main chat hides timers and the context-budget summary. Completed requests show small server-reported input/output token counts beneath the corresponding user/assistant bubbles; older or incomplete replies without metrics show no count. Input counts cover the full request (including history and attachments); output counts include reasoning when enabled. Counts are saved with the conversation and excluded from subsequent model messages. Context controls remain in Connection settings; a compact attention notice opens details when a send is blocked.
+
+The context setting defaults to 4,096 tokens and is capped by the model maximum when metadata reports one. Kllama supplies this explicit `num_ctx` and a 1,024-token output cap to Ollama. The input estimate conservatively counts UTF-8 bytes plus message/file overhead, reserves 1,024 output tokens and 256 safety tokens, and blocks sending when the estimate will not fit. Details explains how to remove/shorten content, start a new conversation, or increase context in Connection settings. Drafts and history remain intact on a blocked send. Images add a 4,096-token allowance each, which is an estimate rather than a guaranteed upper bound: actual image tokens vary by model, image size and tiling. Increase context (or enable automatic maximum context) if needed. Model maxima may be unknown and the estimate is not a tokenizer count; Kllama never truncates input itself.
 
 Connection settings → **Use model maximum automatically** selects the context limit reported by the current model. If unavailable, Kllama uses the saved manual limit until discovery succeeds. Turning it off restores the manual limit. Maximum context can substantially increase memory use.
 
@@ -39,7 +60,7 @@ Markdown is parsed with HTML disabled. Image resources, including local/data URL
 ```bash
 sudo dnf install cmake gcc-c++ ninja-build extra-cmake-modules \
   qt6-qtbase-devel qt6-qtdeclarative-devel kf6-kirigami-devel \
-  kf6-ki18n-devel kf6-qqc2-desktop-style
+  kf6-ki18n-devel kf6-qqc2-desktop-style poppler-utils unzip
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ctest --test-dir build --output-on-failure
@@ -65,9 +86,16 @@ The build installs a desktop entry, scalable icon, and AppStream metadata. RPM p
 
 ## Connect
 
-Run Ollama separately (`ollama serve` when no service is already running). Kllama defaults to `http://localhost:11434`. Open Connection settings for a remote hostname or IP, including scheme and port. Local mode only accepts `localhost`, `127.0.0.1`, or `[::1]` to avoid showing this computer's RAM for a remote server. No credentials are stored in URLs, redirects are not followed, and remote authentication is outside M3.
+Run Ollama separately (`ollama serve` when no service is already running). Kllama defaults to `http://localhost:11434`. Open Connection settings for a remote hostname or IP, including scheme and port. Local mode only accepts `localhost`, `127.0.0.1`, or `[::1]` to avoid showing this computer's RAM for a remote server. No credentials are stored in URLs, redirects are not followed, and remote authentication is not implemented.
 
 If there are no models, install one with `ollama pull <model>` in a terminal, then refresh. Kllama never starts a server or downloads models automatically.
+
+For an explicit PDF-plus-image inference check (choose an installed vision model):
+
+```bash
+KLLAMA_LIVE_TEST=1 KLLAMA_LIVE_MODEL=gemma3:12b \
+  QT_QPA_PLATFORM=offscreen ./build/bin/m4test liveDocumentAndVision
+```
 
 ## Translation
 
@@ -75,11 +103,13 @@ User-facing strings use KI18n in C++ and QML. `po/Messages.sh` is the extraction
 
 ## Stored data
 
+M4 keeps schema version 2: attachment metadata is extended without changing the database layout. Extracted text and source maps are rebuilt from managed originals; base64 image data is not stored in conversation messages or metadata.
+
 The About dialog shows the data directory. Its `conversations.sqlite` file contains unencrypted chats and drafts with owner-only database permissions. Schema version 2 stores attachment metadata and recovers in-progress messages as interrupted on startup. M2 schema-1 databases migrate automatically after a consistent `conversations-v1-backup.sqlite` backup is made; newer unknown schemas and invalid message data are preserved and reported as storage errors. Delete a conversation to remove its active records and managed attachments; this is logical deletion, not guaranteed forensic erasure from SQLite free pages or backups. Migration backups remain until you explicitly remove them.
 
 ## Development checks
 
-The QtTest suites use isolated settings/data directories and loopback HTTP fixtures. They cover model discovery, split/coalesced UTF-8 stream records, malformed/truncated responses, HTTP errors, cancellation, history assembly, regeneration, edits, storage recovery, code copying, keyboard sending/newlines, clipboard round trips, and selection retention during streaming. M3 tests also cover capability caching and invalidation, missing metadata, stale replies, file validation/cancellation/duplicates, managed-copy recovery/deletion, schema migration, context blocking, Markdown isolation/highlighting, file-URL paste/drop, and file preview. Offscreen smoke tests open settings and About. Native Wayland acceptance is recorded in [VALIDATION.md](VALIDATION.md).
+The QtTest suites use isolated settings/data directories and loopback HTTP fixtures. They cover model discovery, split/coalesced UTF-8 stream records, malformed/truncated responses, HTTP errors, cancellation, history assembly, regeneration, edits, storage recovery, code copying, keyboard sending/newlines, clipboard round trips, and selection retention during streaming. M3 tests also cover capability caching and invalidation, missing metadata, stale replies, file validation/cancellation/duplicates, managed-copy recovery/deletion, schema migration, context blocking, Markdown isolation/highlighting, file-URL paste/drop, and file preview. M4 tests generate text/scanned/encrypted PDFs, DOCX archives and PNG/JPEG images, and cover source excerpts, limits, missing tools, cancellation, capability gating, clipboard images, request encoding and restoration. `qpdf` is an optional test dependency for the encrypted-PDF fixture. Offscreen smoke tests open settings and About. Native Wayland acceptance is recorded in [VALIDATION.md](VALIDATION.md).
 
 Normal tests never contact the user's Ollama server. An explicit local inference check is available:
 

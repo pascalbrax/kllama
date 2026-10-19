@@ -10,7 +10,7 @@
 class MessageModel : public QAbstractListModel {
     Q_OBJECT
 public:
-    enum Role { Speaker = Qt::UserRole + 1, Body, State, Model };
+    enum Role { Speaker = Qt::UserRole + 1, Body, State, Model, Reasoning, TokenCount, Files };
     explicit MessageModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
     int rowCount(const QModelIndex &parent = {}) const override { return parent.isValid() ? 0 : int(m_rows.size()); }
     QVariant data(const QModelIndex &index, int role) const override;
@@ -19,6 +19,9 @@ public:
     void append(const QJsonObject &row);
     void truncate(int count);
     void updateLast(const QString &content, const QString &state);
+    void updateLastReasoning(const QString &reasoning);
+    void setFiles(int row, const QJsonArray &files);
+    void updateLastUsage(qint64 input, qint64 output);
     QJsonArray rows() const { return m_rows; }
 private:
     QJsonArray m_rows;
@@ -44,6 +47,7 @@ class ChatSession : public QObject {
     Q_PROPERTY(bool canRetry READ canRetry NOTIFY activityChanged)
     Q_PROPERTY(int elapsedSeconds READ elapsedSeconds NOTIFY tick)
     Q_PROPERTY(QString storageError READ storageError NOTIFY storageErrorChanged)
+    Q_PROPERTY(bool showReasoning READ showReasoning WRITE setShowReasoning NOTIFY preferencesChanged)
     Q_PROPERTY(bool enterSends READ enterSends WRITE setEnterSends NOTIFY preferencesChanged)
 public:
     explicit ChatSession(OllamaConnection *connection, const QString &directory, QObject *parent = nullptr);
@@ -69,6 +73,8 @@ public:
     bool canRetry() const;
     int elapsedSeconds() const { return m_elapsed.isValid() ? int(m_elapsed.elapsed()/1000) : 0; }
     QString storageError() const { return m_store.error(); }
+    bool showReasoning() const { return m_showReasoning; }
+    void setShowReasoning(bool enabled);
     bool enterSends() const { return m_enterSends; }
     void setEnterSends(bool enabled);
     void setDraft(const QString &text);
@@ -78,6 +84,7 @@ public:
     Q_INVOKABLE void renameConversation(const QString &title);
     Q_INVOKABLE void deleteConversation();
     Q_INVOKABLE void send();
+    Q_INVOKABLE void removeMessageAttachment(int row, const QString &id);
     Q_INVOKABLE void stop();
     Q_INVOKABLE void retry();
     Q_INVOKABLE void editAndResend(int row, const QString &text);
@@ -103,8 +110,9 @@ private:
     void parseRecord(const QByteArray &record);
     void finish(const QString &state, const QString &message);
     QJsonArray preparedHistory(const QJsonArray &rows) const;
-    QString contextProblem(const QJsonArray &rows,const QString &draft) const;
-    qint64 estimatedTokens(const QJsonArray &rows,const QString &draft) const;
+    QString contextProblem(const QJsonArray &rows,const QString &draft,bool includePending=true) const;
+    qint64 estimatedTokens(const QJsonArray &rows,const QString &draft,bool includePending=true) const;
+    QJsonArray referencedFiles(const QJsonArray &rows,bool includePending=true) const;
     void restoreAttachments();
     void setActivity(const QString &state, const QString &message);
     OllamaConnection *m_connection;
@@ -120,9 +128,11 @@ private:
     QNetworkAccessManager m_network;
     QPointer<QNetworkReply> m_reply;
     QByteArray m_buffer, m_errorBody;
+    QString m_reasoning;
     QString m_content, m_status, m_state = "idle";
     QTimer m_idleTimeout, m_checkpoint, m_draftTimer, m_tick;
     QElapsedTimer m_elapsed;
     bool m_enterSends = true;
+    bool m_showReasoning = false;
     qsizetype m_responseBytes = 0;
 };

@@ -78,7 +78,7 @@ bool ChatStore::load(const QString &id, Conversation &c) {
     for (const auto &value : doc.array()) {
         const auto message = value.toObject();
         const auto role = message.value("role").toString();
-        if (!value.isObject() || (role != "user" && role != "assistant") || !message.value("content").isString() || !message.value("state").isString())
+        if (!value.isObject() || (role != "user" && role != "assistant") || !message.value("content").isString() || !message.value("state").isString() || (message.contains("reasoning") && !message.value("reasoning").isString()) || (message.contains("files") && !message.value("files").isArray()))
             return fail("Invalid message data; database has been preserved.");
     }
     QJsonParseError attachmentError;

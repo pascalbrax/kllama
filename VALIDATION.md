@@ -112,3 +112,46 @@ Added an opt-in persistent setting to use the current model’s reported context
 Added five-second asynchronous `/api/ps` polling for local and remote endpoints, with a 5-second transfer timeout, 1 MiB response cap, manual redirects, no overlapping requests, and cancellation on endpoint changes. Sidebar bars use theme colors, gradients, numeric percentages, and reduced-motion-aware transitions; multiple models scroll within a bounded area. The model-placement tooltip distinguishes memory offload from processor activity.
 
 Fixture tests cover the 19%/81% split, CPU-only/GPU-only placement, empty lists, missing/invalid metrics, malformed responses, unsupported endpoints, and stale replies after switching local/remote endpoints. The sidebar was rendered and visually inspected at `build/placement-sidebar.png`; no QML warnings in the interface check. All five CTest targets pass. Remote mode is verified using an isolated HTTP fixture; no external remote host was available for a live check.
+
+### M4 — document extraction and native image input (2026-10-19)
+
+Version 0.4.0 adds content-validated PDF/DOCX extraction and PNG/JPEG image input. PDF sources carry page numbers; DOCX sources carry recognized section headings and body paragraph indices, including table paragraphs. Excerpts can be selected in Preview and the managed original opened explicitly; source links retain correct file extensions for desktop associations and PDF page fragments. Generated model references are labelled as unverified independently of these extraction locations.
+
+Preparation and clipboard PNG encoding run on the existing two-worker pool. Reading, inspecting, extracting, referencing and saving stages are exposed in the attachment UI. Subprocesses run without a shell, close standard input, bound output/stderr, stop on cancellation, and time out after 45 seconds. Limits: 20 MiB document input, 200 PDF pages, 512 KiB extracted text, 8 MiB DOCX XML, and 20,000 DOCX paragraphs. Encrypted/password-protected, scanned-only, damaged, empty and unsupported inputs fail explicitly; partially blank PDF pages and body-only DOCX limitations are surfaced in the attachment and preview.
+
+Images require confirmed current-model vision metadata. PNG/JPEG decoding, image byte/dimension limits and animated PNG rejection precede readiness. At most four images (10 MiB each, 20 MiB combined, 8,192 pixels per side, 12 megapixels) can be sent, encoded in the chat reference message's `images` array. Unknown or text-only model selection blocks sending without dropping the draft or files. Context estimates use extracted text bytes plus a disclosed, model-dependent 4,096-token allowance per image. Base64 image data is reconstructed from managed originals, not stored in message JSON or attachment metadata. Database schema remains version 2; schema-1 migration and older text conversations still pass regression checks.
+
+Validation:
+
+- All six CTest targets pass after the final build. M4 fixtures include multi-page, scanned, encrypted (empty and non-empty passwords), damaged and over-page-limit PDFs; DOCX headings/tables, malformed XML, entities, non-DOCX ZIPs and oversized XML/text; PNG/JPEG decoding, corrupt/oversized/animated images, capability changes, clipboard images, managed-copy recovery/deletion, source URL routing, cancellation and missing tools.
+- Native Wayland document/image previews and 640×620 layout checks pass without QML warnings. Source and image preview screenshots were inspected at `build/m4-wayland-preview.png` and `build/m4-wayland-image.png`.
+- Opt-in live inference with local `gemma3:12b` at a 32,768-token context passed: “The reference value on page 1 of the PDF is 731, and the dominant color in the image is blue.” The isolated test used a generated PDF and blue PNG and completed in about 130 seconds on CPU. Private conversations and documents were not accessed.
+- README screenshot refreshed from the native application with isolated demonstration content.
+
+Remaining manual acceptance: cross-application Wayland clipboard ownership, full Dolphin/native picker interaction and external PDF/DOCX viewer page-navigation behavior. OCR, audio/video, non-PNG/JPEG image encodings and large-document retrieval remain deferred. DOCX headers, footers, footnotes, endnotes, comments, deleted text, text boxes and embedded images are excluded; this limitation is visible before sending. Image token allowances are estimates, not guaranteed model-specific bounds.
+
+### Thinking feedback
+
+Added a tinted assistant activity card with three pulsing dots. It labels the initial wait as “Waiting for model…” and uses “Thinking…” only after a nonempty Ollama thinking event. The backend can return to thinking after partial answer text; answer chunks restore generation, and completion/Stop/errors hide the card. Reasoning content is not rendered or persisted. Animations follow the existing preference, leaving a static indicator when disabled. The request’s existing `think: false` behavior is preserved.
+
+All six CTest targets pass. A fixture checks waiting/thinking/generating transitions, renewed thinking, final answer integrity, Stop, hidden reasoning and reduced-motion visibility. The same UI check passes on native Wayland without QML warnings; screenshot inspected at `build/thinking-wayland.png`.
+
+### Optional model reasoning view
+
+Added the persistent, default-off “Allow viewing model reasoning” preference. Enabled requests set `think: true` only for models with confirmed thinking metadata; other models retain `think: false`. When enabled, server-supplied `message.thinking` chunks stream into a separate, bounded reasoning field and are saved with that assistant response. A collapsed per-reply control exposes selectable plain text and Copy reasoning. Disabling the preference hides stored reasoning and skips capture of new chunks; it does not delete previously saved reasoning. Reasoning is not re-submitted in later chat history or exported as answer Markdown, and shares the existing output-token budget.
+
+All six CTest targets pass. Tests cover default-off non-capture, supported/unsupported request flags, expand/hide controls, preference and reasoning restoration, and exclusion from follow-up payloads. The optional-reasoning interface test also passes on native Wayland without QML warnings; `build/reasoning-wayland.png` was visually inspected. Existing conversations remain compatible with the unchanged database schema.
+
+### Clean chat layout and per-bubble token counts
+
+Removed the chat timer, completed-response throughput/count summary and always-visible context-budget summary. Context/model/attachment blockers retain a compact attention notice with optional details. Final Ollama `prompt_eval_count` and `eval_count` metrics are stored on the corresponding user and assistant messages and displayed in small text beneath those bubbles. Missing metrics remain hidden, including older conversations. Tooltips explain that input covers the request history/attachments and output includes reasoning. Token metadata is excluded from later model requests. Reasoning is labelled Experimental both in settings and beside the per-reply controls.
+
+All six test targets pass. The native Wayland optional-reasoning check also verifies per-bubble metric labels, placement beneath each bubble, persistence across reopening, and clean request history; `build/clean-chat-wayland.png` was visually inspected.
+
+### Message-owned attachments and composer clearing
+
+Sending binds the staged files to the new user message and clears them from the composer. Historical attachment chips retain preview, retry and explicit removal controls. Each attachment is included at most once per request, on its original user message, and context estimates include both history-owned and staged files without double-counting. The Ollama API still receives full conversation history. Retry/regenerate and edit-and-resend preserve original file ownership without consuming unrelated draft files. Editing away later messages prunes their unused managed copies. Blocked sends retain their draft and staged files; request failures keep attachments on the user message for retry. New ownership metadata remains compatible with schema version 2; previously conversation-wide ready files are anchored to the earliest user message on reopening.
+
+Regression coverage includes new files after earlier sends, follow-ups without duplicate references, HTTP failure/retry with staged files, blocked sends, edits and copy cleanup, legacy ownership migration, reopen behavior, image payload retention, and historical chip previews after composer clearing.
+
+Final verification: all six CTest targets pass (12.49 seconds). Native Wayland verifies previewing historical attachment chips after composer clearing without QML warnings. README screenshot was refreshed from isolated demonstration data with message-owned attachments.

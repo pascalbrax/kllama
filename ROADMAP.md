@@ -2,7 +2,7 @@
 
 Kllama is a native KDE desktop frontend for Ollama: chat with local models, copy and paste comfortably, read Markdown responses, and ask questions about attached files.
 
-Status: M1–M3 are implemented and built; automated and native Wayland checks pass, with cross-application Wayland clipboard transfer still awaiting manual acceptance. See VALIDATION.md for results and remaining manual checks. Milestones are ordered by dependency rather than committed dates.
+Status: M1–M4 are implemented and built; automated and native Wayland checks pass, with cross-application Wayland clipboard transfer still awaiting manual acceptance. See VALIDATION.md for results and remaining manual checks. Milestones are ordered by dependency rather than committed dates.
 
 ## Primary development and acceptance target
 
@@ -118,14 +118,14 @@ Make activity understandable at a glance, with a calm, polished KDE appearance. 
 
 **Done when:** a user can inspect the selected model's reported input capabilities, attach a text/code file, inspect what will be included, ask about it, read a formatted answer, and copy its code accurately. Missing capability metadata never appears as confirmed attachment support.
 
-### 4. Document support — v0.4
+### 4. Document support — v0.4 (implemented)
 
-- [ ] Add PDF text extraction with page references and DOCX extraction with section/paragraph references.
-- [ ] Preserve useful document structure and surface extraction failures, encrypted files, and empty documents.
-- [ ] Explain that scanned PDFs need OCR; defer OCR to a later milestone.
-- [ ] Use M3 capability discovery to enable image picking, paste, and drop only for confirmed vision-capable models, including compatible Qwen variants. Validate actual file content, supported encodings, dimensions, and size; send images using Ollama's documented chat `images` input and explain incompatibility before sending.
-- [ ] For other model-native file modalities, inspect the available metadata and endpoint contract before adding a handler. Expose only input paths implemented and tested in Kllama; keep PDF/DOCX text extraction available independently of native document support. Audio/video handlers remain deferred unless explicitly brought into scope.
-- [ ] Offer source excerpts and file/page links for included context; distinguish generated references from verified source locations.
+- [x] Add PDF text extraction with page references and DOCX extraction with section/paragraph references.
+- [x] Preserve useful document structure and surface extraction failures, encrypted files, and empty documents.
+- [x] Explain that scanned PDFs need OCR; defer OCR to a later milestone.
+- [x] Use M3 capability discovery to enable image picking, paste, and drop only for confirmed vision-capable models, including compatible Qwen variants. Validate actual file content, supported encodings, dimensions, and size; send images using Ollama's documented chat `images` input and explain incompatibility before sending.
+- [x] For other model-native file modalities, inspect the available metadata and endpoint contract before adding a handler. Expose only input paths implemented and tested in Kllama; keep PDF/DOCX text extraction available independently of native document support. Audio/video handlers remain deferred unless explicitly brought into scope.
+- [x] Offer source excerpts and file/page links for included context; distinguish generated references from verified source locations.
 
 **Done when:** representative text PDFs and DOCX files produce inspectable text and source locations without freezing the UI.
 
