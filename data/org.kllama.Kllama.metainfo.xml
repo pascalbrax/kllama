@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.kllama.Kllama</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <name>Kllama</name>
+  <summary>A native KDE workspace for Ollama</summary>
+  <description><p>Connect to local or remote Ollama servers, chat with installed models, read Markdown responses, and ask questions about attached text files in a native KDE interface.</p></description>
+  <launchable type="desktop-id">org.kllama.Kllama.desktop</launchable>
+  <provides><binary>kllama</binary></provides>
+  <releases><release version="0.3.0" date="2026-10-18"/><release version="0.2.0" date="2026-10-18"/><release version="0.1.0" date="2026-10-18"/></releases>
+</component>

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Kllama
+GenericName=Ollama Frontend
+Comment=Connect to your Ollama models in a native KDE workspace
+Exec=kllama
+Icon=org.kllama.Kllama
+Terminal=false
+Categories=Qt;KDE;Utility;
+Keywords=AI;Ollama;LLM;Chat;
+StartupNotify=true
