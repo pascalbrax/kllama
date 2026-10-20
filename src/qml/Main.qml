@@ -23,6 +23,7 @@ Kirigami.ApplicationWindow {
         settingsError.text = ""
         settings.open()
     }
+    function openModelDownload() { modelDownloadDialog.open() }
     function openAbout() { settings.close(); about.open() }
     function statusCaption(value) {
         switch (value) {
@@ -205,6 +206,35 @@ Kirigami.ApplicationWindow {
                         UsageBar { label: i18n("GPU"); fraction: modelData.gpu; tint: Kirigami.Theme.positiveTextColor; Layout.fillWidth: true }
                     }
                 }
+            }
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+            Controls.Button {
+                text: ollama.downloader.busy ? i18n("Show download…")
+                      : ollama.downloader.state === "complete" ? i18n("Model downloaded")
+                      : ollama.downloader.state === "error" ? i18n("Download needs attention…")
+                      : i18n("Download model…")
+                icon.name: "download"; Layout.fillWidth: true
+                onClicked: { historyDrawer.close(); window.openModelDownload() }
+                Controls.ToolTip.visible: hovered
+                Controls.ToolTip.text: ollama.downloader.message
+            }
+            Controls.Label {
+                visible: ollama.downloader.busy
+                text: ollama.downloader.modelName
+                textFormat: Text.PlainText
+                font: Kirigami.Theme.smallFont
+                elide: Text.ElideRight; Layout.fillWidth: true
+            }
+            Controls.ProgressBar {
+                objectName: "backgroundDownloadProgress"
+                visible: ollama.downloader.busy
+                Layout.fillWidth: true
+                indeterminate: ollama.animations && ollama.downloader.progress < 0
+                value: Math.max(0, ollama.downloader.progress)
+                Accessible.name: i18n("Model download progress, current layer")
             }
         }
         Controls.Button { text: i18n("Connection settings"); icon.name: "configure"; enabled: !chat.busy && !chat.attachments.busy; Layout.fillWidth: true; onClicked: window.openSettings() }
@@ -685,6 +715,88 @@ Kirigami.ApplicationWindow {
             }
         }
     }
+    Controls.Dialog {
+        id: modelDownloadDialog
+        objectName: "modelDownloadDialog"
+        parent: Controls.Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(560, window.width - 40)
+        padding: Kirigami.Units.largeSpacing * 2
+        title: i18n("Download model")
+        modal: true
+        standardButtons: Controls.Dialog.Close
+        onOpened: {
+            if (ollama.downloader.access === "unknown" && !ollama.downloader.busy)
+                ollama.downloader.checkAccess()
+        }
+        contentItem: ColumnLayout {
+            spacing: Kirigami.Units.largeSpacing
+            Controls.Label {
+                text: i18n("Destination: %1", ollama.endpoint)
+                textFormat: Text.PlainText; wrapMode: Text.WrapAnywhere; Layout.fillWidth: true
+            }
+            Controls.Label {
+                text: i18n("This Ollama server uses its own storage and network to download the model.")
+                wrapMode: Text.WordWrap; Layout.fillWidth: true
+                font: Kirigami.Theme.smallFont
+            }
+            Controls.TextField {
+                id: downloadModelName
+                objectName: "downloadModelName"
+                placeholderText: i18n("Model name, e.g. qwen3.8:latest")
+                Layout.fillWidth: true
+                enabled: !ollama.downloader.busy
+                onAccepted: if (startDownload.enabled) startDownload.clicked()
+            }
+            Controls.Label {
+                text: ollama.downloader.message
+                textFormat: Text.PlainText; wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            Controls.ProgressBar {
+                Layout.fillWidth: true
+                visible: ollama.downloader.busy
+                indeterminate: ollama.animations && ollama.downloader.progress < 0
+                value: Math.max(0, ollama.downloader.progress)
+            }
+            Controls.Label {
+                visible: ollama.downloader.busy && text.length > 0
+                text: ollama.downloader.progressText
+                font: Kirigami.Theme.smallFont
+            }
+            Flow {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+                Controls.Button {
+                    text: i18n("Check access")
+                    enabled: !ollama.downloader.busy
+                    onClicked: ollama.downloader.checkAccess()
+                }
+                Controls.Button {
+                    id: startDownload
+                    objectName: "startModelDownload"
+                    text: i18n("Download")
+                    icon.name: "download"
+                    enabled: ollama.downloader.access === "available" && !ollama.downloader.busy
+                             && downloadModelName.text.trim().length > 0 && !chat.busy && !chat.attachments.busy
+                    onClicked: ollama.downloader.download(downloadModelName.text)
+                }
+                Controls.Button {
+                    objectName: "minimizeModelDownload"
+                    text: i18n("Minimize")
+                    icon.name: "window-minimize"
+                    visible: ollama.downloader.busy
+                    onClicked: modelDownloadDialog.close()
+                }
+                Controls.Button {
+                    text: i18n("Cancel request")
+                    visible: ollama.downloader.busy
+                    onClicked: ollama.downloader.cancel()
+                }
+            }
+        }
+    }
+
     Controls.Dialog {
         id: settings
         objectName: "settingsDialog"

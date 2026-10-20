@@ -14,6 +14,9 @@ public:
     QString digest="fixture-digest";
     QStringList modelNames={"fixture:latest"};
     QHash<QString,QJsonObject> modelDetails;
+    QList<Response> pulls, probes;
+    QList<QJsonObject> pullRequests;
+    int probeCount=0;
     QList<Response> inspections;
     int inspectionCount=0;
     QList<Response> responses;
@@ -44,6 +47,17 @@ public:
                     } else if (!post) {
                         QJsonArray models;for(const auto &name:modelNames)models.append(QJsonObject{{"name",name},{"digest",digest}});
                         response.parts={QJsonDocument(QJsonObject{{"models",models}}).toJson(QJsonDocument::Compact)};
+                    } else if(data->startsWith("POST /api/pull ")) {
+                        const auto request=QJsonDocument::fromJson(data->mid(headerEnd+4)).object();
+                        if(request.value("model").toString().isEmpty()) {
+                            ++probeCount;
+                            if(!probes.isEmpty()) response=probes.takeFirst();
+                            else { response.http=400; response.parts={"{\"error\":\"invalid model name\"}"}; }
+                        } else {
+                            pullRequests.append(request);
+                            if(!pulls.isEmpty()) response=pulls.takeFirst();
+                            else response.parts={"{\"status\":\"success\"}\n"};
+                        }
                     } else if(data->startsWith("POST /api/show ")) {
                         ++inspectionCount;
                         const auto name=QJsonDocument::fromJson(data->mid(headerEnd+4)).object().value("model").toString();

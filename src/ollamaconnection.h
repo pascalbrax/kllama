@@ -9,8 +9,11 @@
 #include <QHash>
 #include <QVariantList>
 
+class ModelDownloader;
+
 class OllamaConnection : public QObject {
     Q_OBJECT
+    Q_PROPERTY(QObject* downloader READ downloader CONSTANT)
     Q_PROPERTY(QString endpoint READ endpoint NOTIFY configurationChanged)
     Q_PROPERTY(bool local READ local NOTIFY configurationChanged)
     Q_PROPERTY(bool animations READ animations WRITE setAnimations NOTIFY configurationChanged)
@@ -24,6 +27,7 @@ class OllamaConnection : public QObject {
     Q_PROPERTY(QVariantList runningModels READ runningModels NOTIFY runtimeChanged)
     Q_PROPERTY(QString runtimeStatus READ runtimeStatus NOTIFY runtimeChanged)
 public:
+    QObject *downloader() const;
     explicit OllamaConnection(QObject *parent = nullptr);
     ~OllamaConnection() override { invalidateReply(); invalidateRuntime(); }
     QVariantList runningModels() const { return m_runningModels; }
@@ -59,6 +63,7 @@ private:
     void sampleMemory();
     void invalidateRuntime();
     void runtimeUnavailable();
+    ModelDownloader *m_downloader=nullptr;
     QSettings m_settings;
     QNetworkAccessManager m_network;
     QPointer<QNetworkReply> m_reply;

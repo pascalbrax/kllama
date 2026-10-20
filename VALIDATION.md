@@ -155,3 +155,18 @@ Sending binds the staged files to the new user message and clears them from the 
 Regression coverage includes new files after earlier sends, follow-ups without duplicate references, HTTP failure/retry with staged files, blocked sends, edits and copy cleanup, legacy ownership migration, reopen behavior, image payload retention, and historical chip previews after composer clearing.
 
 Final verification: all six CTest targets pass (12.49 seconds). Native Wayland verifies previewing historical attachment chips after composer clearing without QML warnings. README screenshot was refreshed from isolated demonstration data with message-owned attachments.
+
+## Model downloads — 2026-10-19
+
+- Local Ollama access probe: POST /api/pull with an empty model and stream=false returned HTTP 400, invalid model name. No weights downloaded. This verifies route access, not future registry/storage authorization.
+- Added fixture tests for download gating, invalid names, streamed/split progress, final success without newline, model-list refresh, denied/unsupported/unexpected access responses, streamed errors, invalid/oversized records, cancellation, HTTP 403, and endpoint-change reset.
+- QML interaction checks open the dialog, probe access, enter a name, download against a fixture, and close the dialog.
+- The server downloads model weights; remote traffic counters cover API payloads only. No real model was installed during validation.
+- Debug build and all seven CTest targets pass (13.92 seconds). Native Wayland dialog interaction passes; screenshot inspected for spacing and layout. Existing synthetic text-cursor warnings occur in the broader native chat interaction check.
+
+### Minimized downloads
+
+- Added an explicit Minimize button that closes the dialog without cancelling its request.
+- Sidebar shows the active model and current-layer progress, with completion/error labels afterward. Download details remain accessible during chat generation.
+- Chat UI fixture verifies a held-open download stays active after minimizing, progress updates while hidden, and reopening preserves the same request; explicit cancellation and a subsequent download still work.
+- Build passes. All seven suites pass after correcting the UI test to select the visible sidebar instead of its hidden drawer counterpart.

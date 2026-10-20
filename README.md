@@ -88,7 +88,9 @@ The build installs a desktop entry, scalable icon, and AppStream metadata. RPM p
 
 Run Ollama separately (`ollama serve` when no service is already running). Kllama defaults to `http://localhost:11434`. Open Connection settings for a remote hostname or IP, including scheme and port. Local mode only accepts `localhost`, `127.0.0.1`, or `[::1]` to avoid showing this computer's RAM for a remote server. No credentials are stored in URLs, redirects are not followed, and remote authentication is not implemented.
 
-If there are no models, install one with `ollama pull <model>` in a terminal, then refresh. Kllama never starts a server or downloads models automatically.
+Use **Download model…** in the sidebar to enter a model name such as `qwen3.8:latest` (availability depends on the registry). The dialog first sends an empty-name request to check that the download API is accessible without downloading anything. This is an endpoint-access check; the actual request can still fail because of private-model authorization, unavailable names, or server storage permissions. Denied or unverifiable access disables Download until a successful recheck.
+
+Downloads run on the configured local or remote Ollama server, using its storage and network. The dialog shows server status and current-layer byte progress; Cancel request aborts this client's request, and Ollama may retain partial data for a retry. Choose **Minimize** (or close the dialog) to keep downloading while you chat. A compact sidebar progress bar remains visible; **Show download…** reopens the details, including during generation. Completion and errors remain visible on the sidebar button. Downloads continue while Kllama is running; exiting the app ends its request. Completion refreshes the model list. Remote traffic statistics count API messages, not model weights transferred by the server. Remote authentication is not implemented. Kllama never starts a server or downloads models automatically.
 
 For an explicit PDF-plus-image inference check (choose an installed vision model):
 

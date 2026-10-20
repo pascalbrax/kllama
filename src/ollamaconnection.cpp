@@ -1,5 +1,6 @@
 #include "ollamaconnection.h"
 #include "processmemory.h"
+#include "modeldownloader.h"
 #include <KLocalizedString>
 #include <QNetworkReply>
 #include <QJsonDocument>
@@ -16,6 +17,7 @@ OllamaConnection::OllamaConnection(QObject *parent) : QObject(parent) {
     m_local = m_settings.value("connection/local", true).toBool();
     m_animations = m_settings.value("appearance/animations", true).toBool();
     m_selectedModel = m_settings.value("chat/model").toString();
+    m_downloader = new ModelDownloader(this,this);
     m_message = i18n("Connect to Ollama to discover your models.");
     m_timeout.setSingleShot(true);
     m_timeout.setInterval(10000);
@@ -273,3 +275,5 @@ void OllamaConnection::refreshRuntime() {
         }
     });
 }
+
+QObject *OllamaConnection::downloader() const {return m_downloader;}
